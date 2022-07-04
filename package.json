@@ -1,0 +1,30 @@
+{
+  "name": "funnycounter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clara-a-correia/funnycounter.git"
+  },
+  "author": "NB",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/clara-a-correia/funnycounter/issues"
+  },
+  "homepage": "https://github.com/clara-a-correia/funnycounter#readme",
+  "dependencies": {
+    "@discordjs/builders": "^0.15.0",
+    "@discordjs/rest": "^0.5.0",
+    "better-sqlite3": "^7.5.3",
+    "discord-api-types": "^0.35.0",
+    "discord-prefix": "^3.0.0",
+    "discord.js": "^13.8.1",
+    "node-gyp": "^9.0.0",
+    "sequelize": "^6.21.2",
+    "sqlite3": "^5.0.8"
+  }
+}
