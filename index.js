@@ -37,36 +37,15 @@ client.on("messageCreate", (message) => {
     // Exit and stop if it's not there
     if (!message.content.startsWith(prefix)) return;
 
-    //----------------------------------------LEADERBOARD
-    getLeaderboard(message);
 
-    //check if user is mentioned
-    const user = message.mentions.users.first();
-    if (!user) return message.channel.send('Please @ Someone');
+    getLeaderboard(message) 
+    getHelp(message) 
 
-    const userID = user.id;
-    const guildID= message.guild.id;
+    giveFunny(message)
+    takeFunny(message)
 
-    //score initialization (?)
-    let score = client.getScore.get(userID, guildID);
-
-    if (!score) {
-        score = {
-            id: `${guildID}-${userID}`,
-            user: userID,
-            guild: guildID,
-            funnies: 0,
-            }
-        }
-
-    //command start - if/else being used because its only 4 commands so far
-    //----------------------------------------------------ADD FUNNY
-    giveFunny(message, score, user)
-
-    //----------------------------------------------------BALANCE
-    getBalance(message, score, user)
-
-    client.setScore.run(score);
+    getBalance(message)
+    
 });
 
 function getLeaderboard(message) {
@@ -76,38 +55,110 @@ function getLeaderboard(message) {
         // embed
         const embed = new MessageEmbed()
             .setTitle("Leaderboard")
-            .setAuthor(null)
-            .setDescription("Our top 10 points leaders!")
+            .setDescription("Our top 5 funnymen!")
             .setColor(0x00AE86);
 
             for (const data of top5) {
                 embed.addFields({ name: client.users.cache.get(data.user).tag, value: `${data.funnies} funnies` });
             }
-        console.log(embed)
+
         message.channel.send({ embeds: [embed] })
         return
     } 
 }
 
-function giveFunny(message, score, user) {
+function giveFunny(message) {
     if (message.content.startsWith(`${prefix}funny`)) {
-        if (checkDouble(user,message)) {
-        score.funnies++;
-        message.channel.send(`One (1) Funny Added to ${user}. Now they have ${score.funnies} Funnies!`) }
-    }
+        let info = checkUser(message);
+        const user = info[0]
+        const score = info[1]
+        if (user !== null && user.bot == false) {
+		    if (checkDouble(user,message) == false) {
+                score.funnies++
+                client.setScore.run(score); //commit changes
+                message.channel.send(`One (1) Funny Added to ${user}. Now they have ${score.funnies} Funnies!`) }
+	    } else {
+            message.channel.send("You need to specify a user (not a bot) to use this command");
+        }
+    }   
 }
 
-function getBalance(message, score, user) {
+function getBalance(message) {
     if (message.content.startsWith(`${prefix}balance`)) {
-		message.channel.send(`${user} has ${score.funnies} Funnies!`);
-	}
+        let info = checkUser(message);
+        const user = info[0]
+        const score = info[1]
+        if (user !== null && user.bot ==false) {
+		    message.channel.send(`${user} has ${score.funnies} Funnies!`);
+	    }else {
+            message.channel.send("You need to specify a user (not a bot) to use this command");
+    }}
 }
 
 function checkDouble(user, message) {
     if (user.id == message.author.id) {
-        message.channel.send("You can't give yourself a Funny")
+        message.channel.send("You can't change your Funnies yourself")
+        return true
+    } else {
+        return false
     }
 }
 
+
+function getHelp(message) {
+    if (message.content.startsWith(`${prefix}help`)) {
+        const embedhelp = new MessageEmbed()
+            .setTitle("Help Menu")
+            .setDescription("Commands Available")
+            .setColor(0x00AE86)
+            .addFields(
+                { name: "+funny", value: "Give one Funny to @someone" },
+                { name: "+remove", value: "Take one Funny from @someone" },
+                { name: "+balance", value: "Check @someone's balance" },
+                { name: "+leaderboard", value: "See the Top 5 leaderboard" }
+            );
+        
+        message.channel.send({ embeds: [embedhelp] });
+    }
+}
+
+function takeFunny(message) {
+    if (message.content.startsWith(`${prefix}remove`)) {
+        let info = checkUser(message);
+        const user = info[0]
+        const score = info[1]
+        if (user !== null && user.bot == false) {
+		    if (checkDouble(user,message) == false) {
+                score.funnies--
+                client.setScore.run(score); //commit changes
+                message.channel.send(`One (1) Funny was Removed from ${user}. Now they have ${score.funnies} Funnies.`) }
+	    }else {
+            message.channel.send("You need to specify a user (not a bot) to use this command");
+    }}   
+}
+
+function checkUser(message){
+    const user = message.mentions.users.first();
+    if (!user) {
+        return [null, null]
+    } else {
+    
+        const userID = user.id;
+        const guildID= message.guild.id;
+
+        //score initialization
+        let score = client.getScore.get(userID, guildID);
+
+        if (!score) {
+            score = {
+                id: `${guildID}-${userID}`,
+                user: userID,
+                guild: guildID,
+                funnies: 0,
+            }
+        }
+        
+        return [user, score]; }
+}
 // Login to Discord with your client's token
 client.login(token);
