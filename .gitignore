@@ -1,1 +1,9 @@
 /config.json
+/node_modules 
+/funnies.sqlite
+/funnies.sqlite-shm
+/funnies.sqlite-wal
+/funnycounter.zip
+/functions
+node_modules
+.env

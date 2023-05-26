@@ -38,8 +38,10 @@ client.on("messageCreate", (message) => {
     if (!message.content.startsWith(prefix)) return;
 
 
-    getLeaderboard(message) 
+    getLeaderboard(message)
+    getFailureboard(message)  
     getHelp(message) 
+    getStatus(message)
 
     giveFunny(message)
     takeFunny(message)
@@ -48,7 +50,27 @@ client.on("messageCreate", (message) => {
     
 });
 
-function getLeaderboard(message) {
+async function getFailureboard(message) {
+    if (message.content.startsWith(`${prefix}failureboard`)) {
+        const bottom5 = sql.prepare("SELECT * FROM funnies WHERE guild = ? ORDER BY funnies LIMIT 5;").all(message.guild.id);
+
+        // embed
+        const embed = new MessageEmbed()
+            .setTitle("Failureboard")
+            .setDescription("Our bottom 5 ~~funny~~ men!")
+            .setColor(0x00AE86);
+
+            for (const data of bottom5 ) {
+                let usr = await client.users.fetch(data.user)
+                embed.addFields({ name: `${usr.username}`, value: `${data.funnies} funnies` });
+            }
+
+        message.channel.send({ embeds: [embed] })
+        return
+    } 
+}
+
+async function getLeaderboard(message) {
     if (message.content.startsWith(`${prefix}leaderboard`)) {
         const top5 = sql.prepare("SELECT * FROM funnies WHERE guild = ? ORDER BY funnies DESC LIMIT 5;").all(message.guild.id);
 
@@ -59,7 +81,8 @@ function getLeaderboard(message) {
             .setColor(0x00AE86);
 
             for (const data of top5) {
-                embed.addFields({ name: client.users.cache.get(data.user).tag, value: `${data.funnies} funnies` });
+                let usr = await client.users.fetch(data.user)
+                embed.addFields({ name: `${usr.username}`, value: `${data.funnies} funnies` });
             }
 
         message.channel.send({ embeds: [embed] })
@@ -115,9 +138,21 @@ function getHelp(message) {
                 { name: "+funny", value: "Give one Funny to @someone" },
                 { name: "+remove", value: "Take one Funny from @someone" },
                 { name: "+balance", value: "Check @someone's balance" },
-                { name: "+leaderboard", value: "See the Top 5 leaderboard" }
+                { name: "+leaderboard", value: "See the Top 5 leaderboard" },
+                { name: "+failureboard", value: "See the Bottom 5 leaderboard" },
+                { name: "+status", value: "Check the current bot status" }
             );
         
+        message.channel.send({ embeds: [embedhelp] });
+    }
+}
+
+function getStatus(message) {
+    if (message.content.startsWith(`${prefix}status`)) {
+        const embedhelp = new MessageEmbed()
+            .setTitle("Bot Status")
+            .setDescription("The bot is functional! :}")
+            .setColor(0x00AE86);
         message.channel.send({ embeds: [embedhelp] });
     }
 }
@@ -160,5 +195,6 @@ function checkUser(message){
         
         return [user, score]; }
 }
+
 // Login to Discord with your client's token
 client.login(token);
