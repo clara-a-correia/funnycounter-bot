@@ -17,17 +17,25 @@ client.once('ready', () => {
     const table = sql.prepare("SELECT count(*) FROM sqlite_master WHERE type='table' AND name ='funnies';").get();
     if (!table['count(*)']) {
         // If the table isn't there, create it and setup the database correctly.
-        sql.prepare("CREATE TABLE funnies (id TEXT PRIMARY KEY, user TEXT, guild TEXT, funnies INTEGER);").run();
+        sql.prepare("CREATE TABLE funnies (id TEXT PRIMARY KEY, user TEXT, guild TEXT, funnies INTEGER, active INTEGER, activity INTEGER);").run();
         // Ensure that the "id" row is always unique and indexed.
         sql.prepare("CREATE UNIQUE INDEX idx_funnies_id ON funnies (id);").run();
         sql.pragma("synchronous = 1");
         sql.pragma("journal_mode = wal");
     }
+    //used once to alter the prexisting table
+    //sql.prepare("ALTER TABLE funnies ADD COLUMN active INTEGER DEFAULT 1").run();
+    //sql.prepare("ALTER TABLE funnies ADD COLUMN activity INTEGER DEFAULT 0").run();
+
+    //inactivate old activities
+    sql.prepare("UPDATE funnies SET active = 0 WHERE active = 1").run();
 
     //statements to get and set the score data.
-    client.getScore = sql.prepare("SELECT * FROM funnies WHERE user = ? AND guild = ?");
-    client.setScore = sql.prepare("INSERT OR REPLACE INTO funnies (id, user, guild, funnies) VALUES (@id, @user, @guild, @funnies);");
+    client.getInfoDB = sql.prepare("SELECT * FROM funnies WHERE user = ? AND guild = ?");
+    client.setInfoDB = sql.prepare("INSERT OR REPLACE INTO funnies (id, user, guild, funnies, active, activity) VALUES (@id, @user, @guild, @funnies, @active, @activity);");
 
+    //current activity statement
+    client.currentActivity = sql.prepare("SELECT * FROM funnies WHERE active = 1 AND activity = 1 AND guild = ? ORDER BY funnies LIMIT 1");
 
     client.user.setActivity("for Funnies", {type:"WATCHING"});
     console.log('Funnies are being Watched');
@@ -37,71 +45,88 @@ client.on("messageCreate", (message) => {
     // Exit and stop if it's not there
     if (!message.content.startsWith(prefix)) return;
 
+    let timeoutId;
 
     getLeaderboard(message)
-    getFailureboard(message)  
     getHelp(message) 
     getStatus(message)
-
-    giveFunny(message)
-    takeFunny(message)
-
+    funnyInteractions(message)
     getBalance(message)
-    
+
+    startActivity(message, timeoutId)
+    deleteActivity(message);
+    currentActivity(message);
+    getActivities(message);
+    if (message.content.startsWith(`${prefix}inactivate`)) {
+        inactivateActivity(message);
+        clearTimeout(timeoutId);
+    };
 });
 
-async function getFailureboard(message) {
-    if (message.content.startsWith(`${prefix}failureboard`)) {
-        const bottom5 = sql.prepare("SELECT * FROM funnies WHERE guild = ? ORDER BY funnies LIMIT 5;").all(message.guild.id);
-
-        // embed
-        const embed = new MessageEmbed()
-            .setTitle("Failureboard")
-            .setDescription("Our bottom 5 ~~funny~~ men!")
-            .setColor(0x00AE86);
-
-            for (const data of bottom5 ) {
-                let usr = await client.users.fetch(data.user)
-                embed.addFields({ name: `${usr.username}`, value: `${data.funnies} funnies` });
-            }
-
-        message.channel.send({ embeds: [embed] })
-        return
-    } 
-}
-
 async function getLeaderboard(message) {
+    let users5;
+    let title;
+    let description;
     if (message.content.startsWith(`${prefix}leaderboard`)) {
-        const top5 = sql.prepare("SELECT * FROM funnies WHERE guild = ? ORDER BY funnies DESC LIMIT 5;").all(message.guild.id);
-
-        // embed
+        users5 = sql.prepare("SELECT * FROM funnies WHERE guild = ? and activity = 0 ORDER BY funnies DESC LIMIT 5;").all(message.guild.id);
+        title = "Leaderboard";
+        description = "Our top 5 funnymen!";
+    } else if (message.content.startsWith(`${prefix}failureboard`)) {
+        users5 = sql.prepare("SELECT * FROM funnies WHERE guild = ? and activity = 0 ORDER BY funnies LIMIT 5;").all(message.guild.id);
+        title = "Failureboard";
+        description = "Our bottom 5 ~~funny~~ men!";
+    } else {
+        return;
+    }
+        // embed message set up
         const embed = new MessageEmbed()
-            .setTitle("Leaderboard")
-            .setDescription("Our top 5 funnymen!")
+            .setTitle(title)
+            .setDescription(description)
             .setColor(0x00AE86);
 
-            for (const data of top5) {
+            for (const data of users5) {
                 let usr = await client.users.fetch(data.user)
                 embed.addFields({ name: `${usr.username}`, value: `${data.funnies} funnies` });
             }
 
         message.channel.send({ embeds: [embed] })
         return
-    } 
-}
+} 
 
-function giveFunny(message) {
-    if (message.content.startsWith(`${prefix}funny`)) {
+function funnyInteractions(message) {
+    let text;
+    let user;
+    let score;
+    if (message.content.startsWith(`${prefix}funny`) || message.content.startsWith(`${prefix}remove`)) {
         let info = checkUser(message);
-        const user = info[0]
-        const score = info[1]
-        if (user !== null && user.bot == false) {
-		    if (checkDouble(user,message) == false) {
-                score.funnies++
-                client.setScore.run(score); //commit changes
-                message.channel.send(`One (1) Funny Added to ${user}. Now they have ${score.funnies} Funnies!`) }
-	    } else {
+        const currentActivity = client.currentActivity.get(message.guild.id);
+        user = info[0]
+        score = info[1]
+        if (user != null && user.bot == true) {
             message.channel.send("You need to specify a user (not a bot) to use this command");
+            return;
+        } else if (user != null && user.id == message.author.id) {
+            message.channel.send("You can't change your Funnies yourself")
+            return;
+        } else if (user == null && currentActivity) {
+            user = currentActivity.user
+            score = currentActivity
+        } else if (user == null && !currentActivity) {
+            message.channel.send("You need to specify a user (not a bot) or have an active activity to use this command");
+            return
+        }
+    
+        if (user !== null) {
+                if (message.content.startsWith(`${prefix}remove`)) {
+                    score.funnies--
+                    text = `One (1) Funny was Removed from ${user}. Now they have ${score.funnies} Funnies.`
+                } else { 
+                    score.funnies++
+                    text = `One (1) Funny Added to ${user}. Now they have ${score.funnies} Funnies!`
+                    message.channel.send("funny added")
+                }
+                client.setInfoDB.run(score);
+                message.channel.send(text);
         }
     }   
 }
@@ -118,21 +143,12 @@ function getBalance(message) {
     }}
 }
 
-function checkDouble(user, message) {
-    if (user.id == message.author.id) {
-        message.channel.send("You can't change your Funnies yourself")
-        return true
-    } else {
-        return false
-    }
-}
-
 
 function getHelp(message) {
     if (message.content.startsWith(`${prefix}help`)) {
         const embedhelp = new MessageEmbed()
             .setTitle("Help Menu")
-            .setDescription("Commands Available")
+            .setDescription("Commands Available - Initial Batch")
             .setColor(0x00AE86)
             .addFields(
                 { name: "+funny", value: "Give one Funny to @someone" },
@@ -144,6 +160,21 @@ function getHelp(message) {
             );
         
         message.channel.send({ embeds: [embedhelp] });
+
+        const embedhelp2 = new MessageEmbed()
+            .setTitle("Help Menu")
+            .setDescription("Commands Available - Patch 2.0 - Activities")
+            .setColor(0x00AE86)
+            .addFields(
+                { name: "+start [name]", value: "Start an activity with a [name] (mandatory) - current Timer: 3 hours" },
+                { name: "+activities", value: "See all previous activities" },
+                { name: "+current", value: "See the current activity" },
+                { name: "+inactivate", value: "Inactivate an activity, but don't remove it completely" },
+                { name: "+delete [name]", value: "Delete activity [name] completely" },
+                { name: "+funny / +remove", value: "Add or remove funnies from activities" }
+            );
+        
+        message.channel.send({ embeds: [embedhelp2] });
     }
 }
 
@@ -157,21 +188,6 @@ function getStatus(message) {
     }
 }
 
-function takeFunny(message) {
-    if (message.content.startsWith(`${prefix}remove`)) {
-        let info = checkUser(message);
-        const user = info[0]
-        const score = info[1]
-        if (user !== null && user.bot == false) {
-		    if (checkDouble(user,message) == false) {
-                score.funnies--
-                client.setScore.run(score); //commit changes
-                message.channel.send(`One (1) Funny was Removed from ${user}. Now they have ${score.funnies} Funnies.`) }
-	    }else {
-            message.channel.send("You need to specify a user (not a bot) to use this command");
-    }}   
-}
-
 function checkUser(message){
     const user = message.mentions.users.first();
     if (!user) {
@@ -182,7 +198,7 @@ function checkUser(message){
         const guildID= message.guild.id;
 
         //score initialization
-        let score = client.getScore.get(userID, guildID);
+        let score = client.getInfoDB.get(userID, guildID);
 
         if (!score) {
             score = {
@@ -190,10 +206,106 @@ function checkUser(message){
                 user: userID,
                 guild: guildID,
                 funnies: 0,
+                active: 1,
+                activity: 0,
             }
         }
-        
         return [user, score]; }
+}
+
+/////////////////
+//ACTIVITY TIME//
+/////////////////
+
+function startActivity(message, timeoutId){
+    if (message.content.startsWith(`${prefix}start`)) {
+
+        const name = message.content.split(" ").slice(1).join(" ");
+        if (name.length < 1) {
+            message.channel.send("An Activity must have a name");
+            return;
+        }
+        const guildID= message.guild.id;
+
+        //const seeRepeat = sql.prepare("SELECT count(*) FROM funnies WHERE activity = 1 AND active = 1");
+        const currentActivity = client.currentActivity.get(guildID);
+        //Object.keys(seeRepeat).length == 0
+        let score = client.getInfoDB.get(name, guildID);
+        if (!score && !currentActivity) {
+            score = {
+                id: `${guildID}-${name}`,
+                user: name,
+                guild: guildID,
+                funnies: 0,
+                active: 1,
+                activity: 1,
+            }
+            client.setInfoDB.run(score);
+            timeoutId = setTimeout(() => { inactivateActivity(message) }, 10800000)
+
+            message.channel.send(`Activity ${name} created! Have fun :)`);
+        } else if (currentActivity){
+            if(currentActivity.user == name){
+                message.channel.send(`This activity (${currentActivity.user}) was already created and is currently active`)
+            } else {
+                message.channel.send(`Only one activity can be active at each moment - Please use ${currentActivity.user}`)
+            }
+        } else {
+            message.channel.send(`Activity ${name} already exists, but isn't active. Please use an unique name if you want to start an activity`)
+        }
+    } 
+}
+
+function deleteActivity(message){
+    if (message.content.startsWith(`${prefix}delete`)) {
+
+        const name = message.content.split(" ").slice(1).join(" ");
+
+        const guildID= message.guild.id;
+        let score = client.getInfoDB.get(name, guildID);
+        if (score) {
+            sql.prepare("DELETE FROM funnies WHERE user = ? AND guild = ?").run(name, guildID);
+            message.channel.send(`Activity ${name} was deleted.`)
+        }
+    } 
+}
+
+function currentActivity(message){
+    if (message.content.startsWith(`${prefix}current`)) {
+        const currentActivity = client.currentActivity.get(message.guild.id);
+        if(Object.keys(currentActivity).length !== 0){
+            message.channel.send(`We are currently enjoying ${currentActivity.user} with ${currentActivity.funnies} funnies!`)
+        } else {
+            message.channel.send(`There isn't an ongoing activity.`)
+        }
+    } 
+}
+
+function getActivities(message){
+    if (message.content.startsWith(`${prefix}activities`)) {
+        const activities = sql.prepare("SELECT * FROM funnies WHERE activity = 1 AND guild = ? ORDER BY funnies DESC").all(message.guild.id);
+        const embed = new MessageEmbed()
+        .setTitle("All Activities")
+        .setDescription("Activities enjoyed previously")
+        .setColor(0x00AE86);
+
+        for (const activity of activities) {
+            embed.addFields({ name: `${activity.user}`, value: `${activity.funnies} funnies` });
+        }
+
+    message.channel.send({ embeds: [embed] })
+    return
+    } 
+}
+
+function inactivateActivity(message){
+        const guildID= message.guild.id;
+        const currentActivity = client.currentActivity.get(guildID);
+        if (currentActivity) {
+            currentActivity.active = 0;
+            client.setInfoDB.run(currentActivity);
+            message.channel.send(`Activity ${currentActivity.user} was inactivated! Hope you had fun :)`)
+        }
 }
 
 // Login to Discord with your client's token
