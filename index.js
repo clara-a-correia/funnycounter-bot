@@ -123,7 +123,6 @@ function funnyInteractions(message) {
                 } else { 
                     score.funnies++
                     text = `One (1) Funny Added to ${user}. Now they have ${score.funnies} Funnies!`
-                    message.channel.send("funny added")
                 }
                 client.setInfoDB.run(score);
                 message.channel.send(text);
