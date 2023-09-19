@@ -94,24 +94,29 @@ async function getLeaderboard(message) {
 } 
 
 function funnyInteractions(message) {
+    //give or take funnies from users or activities
     let text;
     let user;
     let score;
     if (message.content.startsWith(`${prefix}funny`) || message.content.startsWith(`${prefix}remove`)) {
         let info = checkUser(message);
         const currentActivity = client.currentActivity.get(message.guild.id);
-        user = info[0]
+        user = info[0] 
         score = info[1]
         if (user != null && user.bot == true) {
+            //verify not bot
             message.channel.send("You need to specify a user (not a bot) to use this command");
             return;
         } else if (user != null && user.id == message.author.id) {
+            //verify not self interaction
             message.channel.send("You can't change your Funnies yourself")
             return;
         } else if (user == null && currentActivity) {
+            //verify that there is a current activity if no user is mentioned
             user = currentActivity.user
             score = currentActivity
         } else if (user == null && !currentActivity) {
+            //case of no user and no current activity
             message.channel.send("You need to specify a user (not a bot) or have an active activity to use this command");
             return
         }
@@ -121,6 +126,7 @@ function funnyInteractions(message) {
                     score.funnies--
                     text = `One (1) Funny was Removed from ${user}. Now they have ${score.funnies} Funnies.`
                 } else { 
+                    //+remove and +funny are the only options as stated above, no need of else if
                     score.funnies++
                     text = `One (1) Funny Added to ${user}. Now they have ${score.funnies} Funnies!`
                 }
@@ -131,19 +137,31 @@ function funnyInteractions(message) {
 }
 
 function getBalance(message) {
+    //get balance from an user, including the message sender, or of the current activity if no info is placed
     if (message.content.startsWith(`${prefix}balance`)) {
         let info = checkUser(message);
-        const user = info[0]
-        const score = info[1]
-        if (user !== null && user.bot ==false) {
+        const currentActivity = client.currentActivity.get(message.guild.id);
+        let user = info[0]
+        let score = info[1]
+        if (user == null && currentActivity) {
+            //verify that there is a current activity if no user is mentioned
+            user = currentActivity.user
+            score = currentActivity 
+        } else if (user == null && !currentActivity) { 
+            message.channel.send("You need to specify a user (not a bot) or have an active activity to use this command");
+            return
+        } else if (user !== null && user.bot ==false) {
 		    message.channel.send(`${user} has ${score.funnies} Funnies!`);
-	    }else {
-            message.channel.send("You need to specify a user (not a bot) to use this command");
-    }}
+            return
+        }
+        message.channel.send(`${user} has ${score.funnies} Funnies!`)
+        return
+    }
 }
 
 
 function getHelp(message) {
+    //general information 
     if (message.content.startsWith(`${prefix}help`)) {
         const embedhelp = new MessageEmbed()
             .setTitle("Help Menu")
@@ -168,7 +186,7 @@ function getHelp(message) {
                 { name: "+start [name]", value: "Start an activity with a [name] (mandatory) - current Timer: 3 hours" },
                 { name: "+activities", value: "See all previous activities" },
                 { name: "+current", value: "See the current activity" },
-                { name: "+inactivate", value: "Inactivate an activity, but don't remove it completely" },
+                { name: "+inactivate", value: "Inactivate the current activity, but don't remove it completely" },
                 { name: "+delete [name]", value: "Delete activity [name] completely" },
                 { name: "+funny / +remove", value: "Add or remove funnies from activities" }
             );
@@ -178,6 +196,7 @@ function getHelp(message) {
 }
 
 function getStatus(message) {
+    //have bot print a message 
     if (message.content.startsWith(`${prefix}status`)) {
         const embedhelp = new MessageEmbed()
             .setTitle("Bot Status")
@@ -188,6 +207,7 @@ function getStatus(message) {
 }
 
 function checkUser(message){
+    //check if message has user mentioned and return info from that user from DB
     const user = message.mentions.users.first();
     if (!user) {
         return [null, null]
@@ -217,20 +237,23 @@ function checkUser(message){
 /////////////////
 
 function startActivity(message, timeoutId){
+    //start a current activity 
     if (message.content.startsWith(`${prefix}start`)) {
 
         const name = message.content.split(" ").slice(1).join(" ");
+
         if (name.length < 1) {
+            //verify name existance 
             message.channel.send("An Activity must have a name");
             return;
         }
         const guildID= message.guild.id;
 
-        //const seeRepeat = sql.prepare("SELECT count(*) FROM funnies WHERE activity = 1 AND active = 1");
         const currentActivity = client.currentActivity.get(guildID);
-        //Object.keys(seeRepeat).length == 0
+        
         let score = client.getInfoDB.get(name, guildID);
         if (!score && !currentActivity) {
+            //if activity not yet on DB and no current activity, create new activity
             score = {
                 id: `${guildID}-${name}`,
                 user: name,
@@ -240,10 +263,12 @@ function startActivity(message, timeoutId){
                 activity: 1,
             }
             client.setInfoDB.run(score);
+            //timeout three hours
             timeoutId = setTimeout(() => { inactivateActivity(message) }, 10800000)
 
             message.channel.send(`Activity ${name} created! Have fun :)`);
         } else if (currentActivity){
+            //if current activity exists then don't create a new one
             if(currentActivity.user == name){
                 message.channel.send(`This activity (${currentActivity.user}) was already created and is currently active`)
             } else {
@@ -256,6 +281,7 @@ function startActivity(message, timeoutId){
 }
 
 function deleteActivity(message){
+    //delete activity from DB 
     if (message.content.startsWith(`${prefix}delete`)) {
 
         const name = message.content.split(" ").slice(1).join(" ");
@@ -263,16 +289,17 @@ function deleteActivity(message){
         const guildID= message.guild.id;
         let score = client.getInfoDB.get(name, guildID);
         if (score) {
-            sql.prepare("DELETE FROM funnies WHERE user = ? AND guild = ?").run(name, guildID);
+            sql.prepare("DELETE FROM funnies WHERE user = ? AND activity = 1 AND guild = ?").run(name, guildID);
             message.channel.send(`Activity ${name} was deleted.`)
         }
     } 
 }
 
 function currentActivity(message){
+    //verify current activity
     if (message.content.startsWith(`${prefix}current`)) {
         const currentActivity = client.currentActivity.get(message.guild.id);
-        if(Object.keys(currentActivity).length !== 0){
+        if(currentActivity){
             message.channel.send(`We are currently enjoying ${currentActivity.user} with ${currentActivity.funnies} funnies!`)
         } else {
             message.channel.send(`There isn't an ongoing activity.`)
@@ -281,6 +308,7 @@ function currentActivity(message){
 }
 
 function getActivities(message){
+    //get all previous activities in desc funny order
     if (message.content.startsWith(`${prefix}activities`)) {
         const activities = sql.prepare("SELECT * FROM funnies WHERE activity = 1 AND guild = ? ORDER BY funnies DESC").all(message.guild.id);
         const embed = new MessageEmbed()
@@ -298,6 +326,7 @@ function getActivities(message){
 }
 
 function inactivateActivity(message){
+    //inactivate current activity, but not delete it
         const guildID= message.guild.id;
         const currentActivity = client.currentActivity.get(guildID);
         if (currentActivity) {
