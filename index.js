@@ -10,6 +10,7 @@ const SQLite = require("better-sqlite3");
 const sql = new SQLite("./funnies.sqlite");
 
 const prefix = "+";
+//banana
 
 // When the client is ready, run this code (only once)
 client.once('ready', () => {
